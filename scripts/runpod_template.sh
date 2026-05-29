@@ -63,6 +63,33 @@ if ! runpodctl user >/dev/null 2>&1; then
   exit 1
 fi
 
+# Idempotent: RunPod requires unique template names. If one with this name
+# already exists, delete it so we can recreate with the current config (note:
+# `template update` cannot change the start command, so we replace instead).
+EXISTING_ID="$(runpodctl template list --type user -o json 2>/dev/null | python3 -c '
+import sys, json
+name = sys.argv[1]
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(0)
+def walk(o):
+    out = []
+    if isinstance(o, list):
+        for x in o: out += walk(x)
+    elif isinstance(o, dict):
+        if "name" in o and any(k in o for k in ("id", "templateId", "imageName")): out.append(o)
+        for v in o.values(): out += walk(v)
+    return out
+for t in walk(d):
+    if str(t.get("name", "")) == name:
+        tid = t.get("id") or t.get("templateId")
+        if tid: print(tid); break
+' "$NAME" 2>/dev/null || true)"
+if [ -n "$EXISTING_ID" ]; then
+  echo ">> Existing template '$NAME' ($EXISTING_ID) found — replacing it (delete + recreate)."
+  echo "   (pass NAME=<other> to keep a separate template instead.)"
+  runpodctl template delete "$EXISTING_ID" >/dev/null 2>&1 || echo "   !! delete failed; create may still hit the name clash."
+fi
+
 echo ">> Creating template '$NAME'  [$MODE]"
 echo "     image      = $IMG"
 [ "$MODE" = clone-at-boot ] && echo "     repo       = $REPO_URL"
