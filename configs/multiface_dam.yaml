@@ -1,0 +1,65 @@
+# Deep Appearance Model for Meta's Multiface dataset, sized to train on ONE GPU.
+#
+# Defaults are deliberately conservative so the first run won't OOM on a 16-24 GB
+# card. Run `python -m codec_avatars.doctor --config this.yaml --set data.root=...`
+# first: it does one real step and prints peak VRAM + a fit verdict in seconds.
+#
+# Scale up once doctor reports headroom (in rough order of impact):
+#   --set optim.batch_size=8        # 24 GB+ at tex_size 512
+#   --set model.tex_size=1024       # 4x texture memory; the full-res Multiface UV
+#   --set model.latent_dim=512      # a bigger "code" (more bytes/frame)
+# The vertex count is auto-synced from the data at startup; n_vertices is a hint.
+name: multiface_dam
+
+model:
+  latent_dim: 256
+  n_vertices: 7306          # MUGSY topology; overwritten by the loader
+  tex_size: 512             # 512 is the smooth default; bump to 1024 if VRAM allows
+  tex_channels: 3
+  view_dim: 3
+  # Channel schedules; auto-fit to tex_size (more scales -> more stages used).
+  enc_tex_channels: [32, 64, 128, 256, 256, 256, 256, 256]
+  dec_tex_channels: [256, 256, 256, 256, 256, 128, 64, 32]
+  mesh_hidden: [512, 256]
+
+data:
+  name: multiface
+  root: data/multiface        # set to your download path (--set data.root=...)
+  subjects: []                # [] = autodiscover every subject under root
+  cameras: null               # null = all cameras
+  expressions: null           # null = all expressions/segments
+  max_frames_per_seq: 200     # subsample long sequences for balance
+  val_fraction: 0.02
+  num_workers: 8
+  pin_memory: true
+
+loss:
+  w_geom: 1.0
+  w_tex: 1.0
+  w_kl: 1.0e-3
+  kl_warmup_steps: 5000
+  geom_scale: 0.1
+
+optim:
+  lr: 1.0e-3
+  beta1: 0.9
+  beta2: 0.999
+  weight_decay: 0.0
+  batch_size: 4               # safe on 16 GB at tex_size 512; raise per doctor
+  max_steps: 200000
+  grad_clip: 1.0
+  lr_decay_steps: 200000      # cosine decay to lr_min over the whole run
+  lr_min: 1.0e-5
+
+train:
+  device: cuda
+  amp: true
+  amp_dtype: bf16             # stable for VAEs; auto-falls back to fp16 pre-Ampere
+  out_dir: runs/multiface_dam
+  resume: auto                # pick up runs/.../latest.pt if present (spot-pod safe)
+  log_every: 50
+  val_every: 2000
+  ckpt_every: 2000            # also refreshes latest.pt for preemption recovery
+  tensorboard: true
+  max_val_batches: 20
+  seed: 0

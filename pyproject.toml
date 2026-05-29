@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codec-avatars"
+version = "0.1.0"
+description = "Open-source neural Codec Avatars: a Deep Appearance Model (conditional VAE) that compresses a face into a compact latent code and decodes it to a view-dependent 3D avatar."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "codec-avatars contributors" }]
+keywords = ["codec-avatars", "deep-appearance-model", "telepresence", "vae", "3d-face", "multiface"]
+dependencies = [
+    "torch>=2.2",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "pillow>=10.0",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+log = ["tensorboard>=2.14"]
+data = ["huggingface_hub>=0.23", "requests>=2.31"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+codec-avatars-train = "codec_avatars.train:main"
+codec-avatars-infer = "codec_avatars.infer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,44 @@
+# Tiny, CPU-only config used by tests and the local smoke run.
+# Trains a tiny CodecAvatar on synthetic data for a handful of steps.
+name: smoke
+
+model:
+  latent_dim: 16
+  n_vertices: 128
+  tex_size: 64
+  tex_channels: 3
+  view_dim: 3
+  enc_tex_channels: [8, 16, 32, 32]
+  dec_tex_channels: [32, 32, 16, 8]
+  mesh_hidden: [64, 32]
+
+data:
+  name: synthetic
+  synthetic_size: 48
+  synthetic_identities: 3
+  val_fraction: 0.1
+  num_workers: 0
+
+loss:
+  w_geom: 1.0
+  w_tex: 1.0
+  w_kl: 1.0e-3
+  kl_warmup_steps: 20
+  geom_scale: 0.1
+
+optim:
+  lr: 1.0e-3
+  batch_size: 4
+  max_steps: 40
+  grad_clip: 1.0
+  lr_decay_steps: 0
+
+train:
+  device: cpu
+  amp: false
+  out_dir: runs/smoke
+  log_every: 5
+  val_every: 20
+  ckpt_every: 0
+  tensorboard: false
+  seed: 0

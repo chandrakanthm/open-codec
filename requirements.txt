@@ -1,0 +1,13 @@
+# Core (CPU works for smoke tests; install a CUDA torch build on RunPod)
+torch>=2.2
+numpy>=1.24
+pyyaml>=6.0
+pillow>=10.0
+tqdm>=4.65
+
+# Logging / metrics (optional but used by train.py if present)
+tensorboard>=2.14
+
+# Dataset download helpers (optional)
+huggingface_hub>=0.23
+requests>=2.31

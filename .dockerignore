@@ -1,0 +1,15 @@
+# Keep the build context small + the image clean.
+.git
+.gitignore
+runs/
+outputs/
+data/
+.multiface_repo/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.pt
+*.npy
+*.egg-info/

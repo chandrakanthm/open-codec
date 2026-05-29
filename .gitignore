@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Data + checkpoints + outputs (large / generated)
+data/
+datasets/
+checkpoints/
+runs/
+outputs/
+wandb/
+*.ckpt
+*.pt
+*.pth
+*.png.bak
+
+# OS
+.DS_Store
