@@ -15,13 +15,15 @@ venv/
 .ruff_cache/
 .ipynb_checkpoints/
 
-# Data + checkpoints + outputs (large / generated)
-data/
-datasets/
-checkpoints/
-runs/
-outputs/
-wandb/
+# Data + checkpoints + outputs (large / generated).
+# Anchored to the repo root (leading slash) so they never match the in-source
+# package src/codec_avatars/data/ — an unanchored `data/` ignores it everywhere.
+/data/
+/datasets/
+/checkpoints/
+/runs/
+/outputs/
+/wandb/
 *.ckpt
 *.pt
 *.pth

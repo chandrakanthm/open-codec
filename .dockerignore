@@ -1,10 +1,11 @@
 # Keep the build context small + the image clean.
+# Anchored (leading slash) so they can't match src/codec_avatars/data/ etc.
 .git
 .gitignore
-runs/
-outputs/
-data/
-.multiface_repo/
+/runs/
+/outputs/
+/data/
+/.multiface_repo/
 **/__pycache__/
 *.pyc
 .pytest_cache/

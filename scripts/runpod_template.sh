@@ -3,29 +3,54 @@
 # demo, using the runpodctl CLI. Creating a template is free; launching a pod
 # from it costs money.
 #
-# Prereqs:
-#   1) runpodctl authenticated:   runpodctl doctor     (or: export RUNPOD_API_KEY=...)
-#   2) IMAGE built & pushed:       IMAGE=... bash scripts/runpod_build_push.sh
+# Two ways to get the code onto the pod — pick ONE:
 #
-# Usage:
-#   IMAGE=docker.io/youruser/codec-avatars:latest bash scripts/runpod_template.sh
+#   A) Clone-at-boot (no image build): point at a PUBLIC git repo. The template
+#      uses a stock PyTorch base image and clones + installs at boot.
+#        REPO_URL=https://github.com/you/your-repo.git bash scripts/runpod_template.sh
 #
-# Tunables (env):
-#   NAME=codec-avatars-demo  DEMO_MODE=smoke  CONTAINER_DISK_GB=30
-#   VOLUME_GB=50  PORTS=22/tcp,6006/http
+#   B) Baked image: build & push first (private ok — see runpod_build_push.sh).
+#        IMAGE=docker.io/you/codec-avatars:latest bash scripts/runpod_template.sh
+#
+# Prereq: runpodctl authenticated —  runpodctl doctor   (or export RUNPOD_API_KEY=...)
+#
+# Tunables (env): NAME DEMO_MODE CONTAINER_DISK_GB VOLUME_GB PORTS
+#                 BASE_IMAGE (clone mode)  REGISTRY_AUTH_ID (baked private image)
 set -euo pipefail
 
-IMAGE="${IMAGE:?Set IMAGE=<registry>/<repo>:<tag> (the pushed demo image). Build it with scripts/runpod_build_push.sh}"
 NAME="${NAME:-codec-avatars-demo}"
 DEMO_MODE="${DEMO_MODE:-smoke}"
 CONTAINER_DISK_GB="${CONTAINER_DISK_GB:-30}"
 VOLUME_GB="${VOLUME_GB:-50}"
 PORTS="${PORTS:-22/tcp,6006/http}"
-# For a PRIVATE image: store creds once with `runpodctl registry create` and pass
-# the resulting id here. It attaches at `pod create` (templates have no auth flag).
+REPO_URL="${REPO_URL:-}"
+IMAGE="${IMAGE:-}"
+BASE_IMAGE="${BASE_IMAGE:-pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime}"
+# Baked private image: store creds once (runpodctl registry create) + pass the id;
+# it attaches at `pod create` (templates have no auth flag).
 REGISTRY_AUTH_ID="${REGISTRY_AUTH_ID:-}"
 AUTH_FLAG=""
 [ -n "$REGISTRY_AUTH_ID" ] && AUTH_FLAG=" --registry-auth-id $REGISTRY_AUTH_ID"
+
+# --- choose how code reaches the pod -----------------------------------------
+if [ -n "$REPO_URL" ]; then
+  MODE="clone-at-boot"
+  IMG="$BASE_IMAGE"
+  CLONE_DIR="$(basename "$REPO_URL" .git)"
+  # Self-contained boot: ensure git/ssh -> clone/pull -> install -> run the demo.
+  # MUST contain NO commas (runpodctl splits --docker-start-cmd on commas).
+  BOOT="set -e; export DEBIAN_FRONTEND=noninteractive; command -v git >/dev/null || { apt-get update && apt-get install -y --no-install-recommends git ca-certificates openssh-server; }; mkdir -p /workspace; cd /workspace; if [ -d $CLONE_DIR/.git ]; then cd $CLONE_DIR && (git pull --ff-only || true); else git clone --depth 1 $REPO_URL $CLONE_DIR && cd $CLONE_DIR; fi; pip install -q numpy pyyaml pillow tqdm tensorboard huggingface_hub requests || true; pip install -q -e . --no-deps || true; export CODE_DIR=/workspace/$CLONE_DIR WORK=/workspace; exec bash scripts/runpod_demo_entrypoint.sh"
+  START_CMD="bash,-lc,$BOOT"
+  README="Codec Avatars demo (clone-at-boot from $REPO_URL). Boot -> clone+install -> GPU doctor -> smoke train+infer -> /workspace/outputs/demo/contact_sheet.png, then idle. Set DEMO_MODE=multiface for the real run."
+elif [ -n "$IMAGE" ]; then
+  MODE="baked-image"
+  IMG="$IMAGE"
+  START_CMD="bash,-lc,/opt/codec-avatars/scripts/runpod_demo_entrypoint.sh"
+  README="Codec Avatars demo (baked image). Boot -> GPU doctor -> smoke train+infer -> /workspace/outputs/demo/contact_sheet.png, then idle. Set DEMO_MODE=multiface for the real run."
+else
+  echo "!! Set REPO_URL=<public git repo>  (clone-at-boot)  OR  IMAGE=<registry>/<repo>:<tag>  (baked)."
+  exit 1
+fi
 
 if ! command -v runpodctl >/dev/null 2>&1; then
   echo "!! runpodctl not found. Install it: https://github.com/runpod/runpodctl"
@@ -38,22 +63,23 @@ if ! runpodctl user >/dev/null 2>&1; then
   exit 1
 fi
 
-echo ">> Creating template '$NAME'"
-echo "     image      = $IMAGE"
+echo ">> Creating template '$NAME'  [$MODE]"
+echo "     image      = $IMG"
+[ "$MODE" = clone-at-boot ] && echo "     repo       = $REPO_URL"
 echo "     demo mode  = $DEMO_MODE"
 echo "     disk/vol   = ${CONTAINER_DISK_GB}GB container / ${VOLUME_GB}GB volume @ /workspace"
 echo "     ports      = $PORTS"
 
 OUT="$(runpodctl template create \
   --name "$NAME" \
-  --image "$IMAGE" \
+  --image "$IMG" \
   --container-disk-in-gb "$CONTAINER_DISK_GB" \
   --volume-in-gb "$VOLUME_GB" \
   --volume-mount-path /workspace \
   --ports "$PORTS" \
   --env "{\"DEMO_MODE\":\"$DEMO_MODE\"}" \
-  --docker-start-cmd "bash,-lc,/opt/codec-avatars/scripts/runpod_demo_entrypoint.sh" \
-  --readme "Codec Avatars demo. Boot -> GPU doctor -> smoke train+infer -> writes /workspace/outputs/demo/contact_sheet.png, then idles for SSH. Set DEMO_MODE=multiface for the real Multiface run." \
+  --docker-start-cmd "$START_CMD" \
+  --readme "$README" \
   -o json)"
 
 echo "$OUT"
@@ -92,7 +118,7 @@ echo
 echo "  runpodctl pod create --template-id $TID \\"
 echo "    --gpu-id \"NVIDIA GeForce RTX 4090\" --name codec-demo --gpu-count 1$AUTH_FLAG"
 [ -z "$TPL_ID" ] && echo "  # (find the id with: runpodctl template list)"
-if [ -z "$REGISTRY_AUTH_ID" ]; then
+if [ "$MODE" = baked-image ] && [ -z "$REGISTRY_AUTH_ID" ]; then
   echo
   echo "Private image? Store creds once (RunPod pulls with them), then add --registry-auth-id:"
   echo "  runpodctl registry create --name myreg --username <user> --password <token>   # prints an id"
